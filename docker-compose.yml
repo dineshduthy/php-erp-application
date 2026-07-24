@@ -1,14 +1,20 @@
+version: "3.8"
+
 services:
   php:
     build: .
     container_name: php-app
+    restart: unless-stopped
+    working_dir: /var/www/html
     volumes:
       - ./:/var/www/html
-    working_dir: /var/www/html
+    depends_on:
+      - mysql
 
   nginx:
     image: nginx:latest
     container_name: nginx-web
+    restart: unless-stopped
     ports:
       - "9090:80"
     volumes:
@@ -18,9 +24,9 @@ services:
       - php
 
   mysql:
-    image: mysql:8
+    image: mysql:8.0
     container_name: mysqlserver
-    restart: always
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: root123
       MYSQL_DATABASE: testdb
@@ -28,3 +34,12 @@ services:
       MYSQL_PASSWORD: Test@123
     ports:
       - "3306:3306"
+    volumes:
+      # Persistent database storage
+      - mysql_data:/var/lib/mysql
+
+      # Automatically import database on first startup
+      - ./testdb.sql:/docker-entrypoint-initdb.d/testdb.sql:ro
+
+volumes:
+  mysql_data:

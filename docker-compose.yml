@@ -1,65 +1,53 @@
 services:
-
   php:
     build:
-      context:.
+      context: .
       dockerfile: Dockerfile
-
     image: php-erp-application:latest
-
     container_name: php-app
-
     restart: unless-stopped
-
     working_dir: /var/www/html
-
     volumes:
       - .:/var/www/html
-
     depends_on:
       - mysql
+    networks:
+      - app-network
 
   nginx:
-
-    build:
-      context: .
-      dockerfile: Dockerfile.nginx
-
-    image: php-erp-nginx:latest
-
+    image: nginx:latest
     container_name: nginx-web
-
     restart: unless-stopped
-
     ports:
       - "9090:80"
-
     volumes:
       - .:/var/www/html
-
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - php
+    networks:
+      - app-network
 
   mysql:
-
     image: mysql:8.0
-
     container_name: mysqlserver
-
     restart: unless-stopped
-
     environment:
-      MYSQL_ROOT_PASSWORD: root123
-      MYSQL_DATABASE: testdb
-      MYSQL_USER: testuser
-      MYSQL_PASSWORD: Test@123
-
+      MYSQL_ROOT_PASSWORD: "root123"
+      MYSQL_DATABASE: "testdb"
+      MYSQL_USER: "testuser"
+      MYSQL_PASSWORD: "Test@123"
     ports:
       - "3306:3306"
-
     volumes:
       - mysql_data:/var/lib/mysql
       - ./testdb.sql:/docker-entrypoint-initdb.d/testdb.sql:ro
+    networks:
+      - app-network
 
 volumes:
   mysql_data:
+
+networks:
+  app-network:
+    driver: bridge

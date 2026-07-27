@@ -41,7 +41,7 @@ pipeline {
                 docker --version
 
                 echo "========== Docker Compose =========="
-                docker-compose version || true
+                docker compose version || true
 
                 echo "========== Trivy Version =========="
                 trivy --version
@@ -85,7 +85,7 @@ pipeline {
             steps {
                 sh '''
                 echo "========== Stopping Existing Containers =========="
-                docker-compose down || true
+                docker compose down || true
                 '''
             }
         }
@@ -94,7 +94,7 @@ pipeline {
             steps {
                 sh '''
                 echo "========== Deploying Containers =========="
-                docker-compose up -d --build
+                docker compose up -d --build
                 '''
             }
         }
@@ -107,7 +107,7 @@ pipeline {
 
                 echo ""
                 echo "========== Compose Status =========="
-                docker-compose ps
+                docker compose ps
                 '''
             }
         }

@@ -1,182 +1,202 @@
 pipeline {
+
     agent any
 
     environment {
+
         IMAGE_NAME = "php-erp-application"
-        IMAGE_TAG  = "latest"
+        IMAGE_TAG = "latest"
+
     }
 
     options {
+
         timestamps()
         disableConcurrentBuilds()
+
     }
 
     triggers {
+
         githubPush()
+
     }
 
     stages {
 
         stage('Checkout Source') {
+
             steps {
+
                 checkout scm
+
             }
+
         }
 
-        stage('Workspace Information') {
+        stage('Workspace Info') {
+
             steps {
+
                 sh '''
-                echo "========== Workspace =========="
+
                 pwd
+
                 ls -lah
 
-                echo ""
-                echo "Checking required files..."
-
-                test -f Dockerfile
-                test -f docker-compose.yml
-                test -f nginx.conf
                 '''
+
             }
+
         }
 
-        stage('Docker & Trivy Version') {
+        stage('Docker Version') {
+
             steps {
+
                 sh '''
-                echo "========== Docker =========="
+
                 docker --version
 
-                echo ""
                 docker compose version
 
-                echo ""
                 trivy --version
+
                 '''
+
             }
+
         }
 
-        stage('Build Docker Image') {
+        stage('Build PHP Image') {
+
             steps {
+
                 sh '''
-                echo "========== Building Docker Image =========="
 
-                docker build \
-                -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                docker build -t php-erp-application:latest .
 
-                docker images | grep ${IMAGE_NAME}
                 '''
+
             }
+
         }
 
-        stage('Trivy Image Scan') {
+        stage('Trivy Scan') {
+
             steps {
+
                 sh '''
-                echo "========== Trivy Scan =========="
 
                 trivy image \
                   --severity HIGH,CRITICAL \
-                  --format table \
                   --exit-code 0 \
-                  ${IMAGE_NAME}:${IMAGE_TAG}
+                  php-erp-application:latest
+
                 '''
+
             }
+
         }
 
-        stage('Clean Previous Deployment') {
+        stage('Remove Old Containers') {
+
             steps {
+
                 sh '''
-                echo "========== Removing Old Containers =========="
 
                 docker compose down --remove-orphans || true
 
                 docker rm -f php-app nginx-web mysqlserver 2>/dev/null || true
 
-                docker image prune -f || true
+                docker image prune -f
+
                 '''
+
             }
+
         }
 
-        stage('Deploy Application') {
+        stage('Deploy') {
+
             steps {
+
                 sh '''
-                echo "========== Deploying =========="
 
                 docker compose up -d --build
+
                 '''
+
             }
+
         }
 
-        stage('Verify Containers') {
+        stage('Verify') {
+
             steps {
+
                 sh '''
-                echo "========== Running Containers =========="
 
                 docker ps
 
-                echo ""
                 docker compose ps
+
                 '''
+
             }
+
         }
 
         stage('Health Check') {
+
             steps {
+
                 sh '''
-                echo "Waiting for services..."
+
                 sleep 20
 
-                echo ""
-                echo "========== PHP =========="
-                docker logs php-app --tail 20 || true
+                curl http://localhost:9090 || true
 
-                echo ""
-                echo "========== Nginx =========="
-                docker logs nginx-web --tail 20 || true
-
-                echo ""
-                echo "========== MySQL =========="
-                docker logs mysqlserver --tail 20 || true
-
-                echo ""
-                echo "========== Application =========="
-                curl -I http://localhost:9090 || true
                 '''
+
             }
+
         }
+
     }
 
     post {
 
         success {
-            echo "=============================================="
-            echo "CI/CD PIPELINE COMPLETED SUCCESSFULLY"
-            echo "Git Checkout      : SUCCESS"
-            echo "Docker Build      : SUCCESS"
-            echo "Trivy Scan        : SUCCESS"
-            echo "Docker Deployment : SUCCESS"
-            echo "Application URL   : http://SERVER-IP:9090"
-            echo "=============================================="
+
+            echo "====================================="
+
+            echo "CI/CD SUCCESS"
+
+            echo "GitHub Checkout SUCCESS"
+
+            echo "Docker Build SUCCESS"
+
+            echo "Trivy Scan SUCCESS"
+
+            echo "Deployment SUCCESS"
+
+            echo "====================================="
+
         }
 
         failure {
-            echo "=============================================="
-            echo "CI/CD PIPELINE FAILED"
-            echo "Please check the Jenkins console output."
-            echo "=============================================="
 
-            sh '''
-            echo ""
-            echo "========== Docker Containers =========="
-            docker ps -a || true
+            echo "====================================="
 
-            echo ""
-            echo "========== Compose Logs =========="
-            docker compose logs --tail=100 || true
-            '''
+            echo "CI/CD FAILED"
+
+            docker ps -a
+
+            echo "====================================="
+
         }
 
-        always {
-            cleanWs()
-        }
     }
+
 }

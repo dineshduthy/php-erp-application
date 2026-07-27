@@ -3,8 +3,7 @@ pipeline {
 
     environment {
         IMAGE_NAME = "php-erp-application"
-        IMAGE_TAG  = "latest"
-        REPORT     = "trivy-report.html"
+        IMAGE_TAG = "latest"
     }
 
     options {
@@ -27,20 +26,25 @@ pipeline {
         stage('Workspace Information') {
             steps {
                 sh '''
-                echo "===== Workspace ====="
+                echo "========== Workspace =========="
                 pwd
-
-                echo "===== Files ====="
+                echo ""
                 ls -lah
                 '''
             }
         }
 
-        stage('Docker Version') {
+        stage('Check Docker & Trivy') {
             steps {
                 sh '''
+                echo "========== Docker Version =========="
                 docker --version
-                docker compose version
+
+                echo "========== Docker Compose =========="
+                docker-compose version || true
+
+                echo "========== Trivy Version =========="
+                trivy --version
                 '''
             }
         }
@@ -48,6 +52,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh '''
+                echo "========== Building Docker Image =========="
                 docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                 '''
             }
@@ -56,6 +61,7 @@ pipeline {
         stage('List Docker Images') {
             steps {
                 sh '''
+                echo "========== Available Images =========="
                 docker images
                 '''
             }
@@ -64,43 +70,22 @@ pipeline {
         stage('Trivy Security Scan') {
             steps {
                 sh '''
-                trivy image \
-                  --severity HIGH,CRITICAL \
-                  --exit-code 0 \
-                  ${IMAGE_NAME}:${IMAGE_TAG}
-                '''
-            }
-        }
+                echo "========== Trivy Scan =========="
 
-        stage('Generate Trivy HTML Report') {
-            steps {
-                sh '''
                 trivy image \
-                  --format template \
-                  --template "@contrib/html.tpl" \
-                  -o ${REPORT} \
-                  ${IMAGE_NAME}:${IMAGE_TAG} || true
+                --severity HIGH,CRITICAL \
+                --format table \
+                --exit-code 0 \
+                ${IMAGE_NAME}:${IMAGE_TAG}
                 '''
-            }
-        }
-
-        stage('Publish Trivy Report') {
-            steps {
-                publishHTML(target: [
-                    allowMissing: true,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: '.',
-                    reportFiles: 'trivy-report.html',
-                    reportName: 'Trivy Security Report'
-                ])
             }
         }
 
         stage('Stop Existing Containers') {
             steps {
                 sh '''
-                docker compose down || true
+                echo "========== Stopping Existing Containers =========="
+                docker-compose down || true
                 '''
             }
         }
@@ -108,7 +93,8 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 sh '''
-                docker compose up -d --build
+                echo "========== Deploying Containers =========="
+                docker-compose up -d --build
                 '''
             }
         }
@@ -116,11 +102,12 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh '''
-                echo "===== Running Containers ====="
+                echo "========== Running Containers =========="
                 docker ps
 
-                echo "===== Compose Status ====="
-                docker compose ps
+                echo ""
+                echo "========== Compose Status =========="
+                docker-compose ps
                 '''
             }
         }
@@ -128,9 +115,10 @@ pipeline {
         stage('Application Health Check') {
             steps {
                 sh '''
+                echo "Waiting for application..."
                 sleep 15
 
-                echo "===== Application Check ====="
+                echo "========== Health Check =========="
                 curl -I http://localhost:9090 || true
                 '''
             }
@@ -140,19 +128,19 @@ pipeline {
     post {
 
         success {
-            echo '========================================='
-            echo 'CI/CD Pipeline Completed Successfully'
-            echo 'Docker Image Built Successfully'
-            echo 'Trivy Scan Completed'
-            echo 'Application Deployed Successfully'
-            echo '========================================='
+            echo "=========================================="
+            echo "CI/CD PIPELINE COMPLETED SUCCESSFULLY"
+            echo "Docker Image Built Successfully"
+            echo "Trivy Scan Completed"
+            echo "Application Deployed Successfully"
+            echo "=========================================="
         }
 
         failure {
-            echo '========================================='
-            echo 'CI/CD Pipeline Failed'
-            echo 'Please check Jenkins Console Output'
-            echo '========================================='
+            echo "=========================================="
+            echo "CI/CD PIPELINE FAILED"
+            echo "Check Jenkins Console Output"
+            echo "=========================================="
         }
 
         always {

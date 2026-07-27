@@ -3,9 +3,8 @@ pipeline {
 
     environment {
         IMAGE_NAME = "php-erp-application"
-        IMAGE_TAG = "latest"
-        COMPOSE_FILE = "docker-compose.yml"
-        REPORT = "trivy-report.html"
+        IMAGE_TAG  = "latest"
+        REPORT     = "trivy-report.html"
     }
 
     options {
@@ -19,19 +18,19 @@ pipeline {
 
     stages {
 
-        stage('Checkout Source Code') {
+        stage('Checkout Source') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Workspace Details') {
+        stage('Workspace Information') {
             steps {
                 sh '''
-                echo "Current Workspace"
+                echo "===== Workspace ====="
                 pwd
 
-                echo "Workspace Files"
+                echo "===== Files ====="
                 ls -lah
                 '''
             }
@@ -54,7 +53,7 @@ pipeline {
             }
         }
 
-        stage('Docker Images') {
+        stage('List Docker Images') {
             steps {
                 sh '''
                 docker images
@@ -66,10 +65,9 @@ pipeline {
             steps {
                 sh '''
                 trivy image \
-                --severity HIGH,CRITICAL \
-                --exit-code 0 \
-                --format table \
-                ${IMAGE_NAME}:${IMAGE_TAG}
+                  --severity HIGH,CRITICAL \
+                  --exit-code 0 \
+                  ${IMAGE_NAME}:${IMAGE_TAG}
                 '''
             }
         }
@@ -78,10 +76,10 @@ pipeline {
             steps {
                 sh '''
                 trivy image \
-                --format template \
-                --template "@contrib/html.tpl" \
-                -o ${REPORT} \
-                ${IMAGE_NAME}:${IMAGE_TAG} || true
+                  --format template \
+                  --template "@contrib/html.tpl" \
+                  -o ${REPORT} \
+                  ${IMAGE_NAME}:${IMAGE_TAG} || true
                 '''
             }
         }
@@ -93,8 +91,8 @@ pipeline {
                     alwaysLinkToLastBuild: true,
                     keepAll: true,
                     reportDir: '.',
-                    reportFiles: "${REPORT}",
-                    reportName: "Trivy Security Report"
+                    reportFiles: 'trivy-report.html',
+                    reportName: 'Trivy Security Report'
                 ])
             }
         }
@@ -118,7 +116,10 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh '''
+                echo "===== Running Containers ====="
                 docker ps
+
+                echo "===== Compose Status ====="
                 docker compose ps
                 '''
             }
@@ -129,6 +130,7 @@ pipeline {
                 sh '''
                 sleep 15
 
+                echo "===== Application Check ====="
                 curl -I http://localhost:9090 || true
                 '''
             }
@@ -138,92 +140,19 @@ pipeline {
     post {
 
         success {
-
-            emailext(
-                subject: "SUCCESS : ${JOB_NAME} #${BUILD_NUMBER}",
-                mimeType: 'text/html',
-                body: """
-                <h2>PHP ERP CI/CD Pipeline Success</h2>
-
-                <table border="1" cellpadding="6">
-                    <tr>
-                        <th>Project</th>
-                        <td>${JOB_NAME}</td>
-                    </tr>
-
-                    <tr>
-                        <th>Build</th>
-                        <td>${BUILD_NUMBER}</td>
-                    </tr>
-
-                    <tr>
-                        <th>Status</th>
-                        <td style="color:green;"><b>SUCCESS</b></td>
-                    </tr>
-
-                    <tr>
-                        <th>Docker Image</th>
-                        <td>${IMAGE_NAME}:${IMAGE_TAG}</td>
-                    </tr>
-
-                    <tr>
-                        <th>Build URL</th>
-                        <td>
-                            <a href="${BUILD_URL}">
-                                ${BUILD_URL}
-                            </a>
-                        </td>
-                    </tr>
-                </table>
-
-                <br>
-
-                <b>The application has been deployed successfully.</b>
-                """,
-                to: "dineshkrishnamoorthy1005@gmail.com"
-            )
+            echo '========================================='
+            echo 'CI/CD Pipeline Completed Successfully'
+            echo 'Docker Image Built Successfully'
+            echo 'Trivy Scan Completed'
+            echo 'Application Deployed Successfully'
+            echo '========================================='
         }
 
         failure {
-
-            emailext(
-                subject: "FAILED : ${JOB_NAME} #${BUILD_NUMBER}",
-                mimeType: 'text/html',
-                body: """
-                <h2>PHP ERP CI/CD Pipeline Failed</h2>
-
-                <table border="1" cellpadding="6">
-                    <tr>
-                        <th>Project</th>
-                        <td>${JOB_NAME}</td>
-                    </tr>
-
-                    <tr>
-                        <th>Build</th>
-                        <td>${BUILD_NUMBER}</td>
-                    </tr>
-
-                    <tr>
-                        <th>Status</th>
-                        <td style="color:red;"><b>FAILED</b></td>
-                    </tr>
-
-                    <tr>
-                        <th>Console Log</th>
-                        <td>
-                            <a href="${BUILD_URL}">
-                                ${BUILD_URL}
-                            </a>
-                        </td>
-                    </tr>
-                </table>
-
-                <br>
-
-                Please review the Jenkins console log.
-                """,
-                to: "dineshkrishnamoorthy1005@gmail.com"
-            )
+            echo '========================================='
+            echo 'CI/CD Pipeline Failed'
+            echo 'Please check Jenkins Console Output'
+            echo '========================================='
         }
 
         always {

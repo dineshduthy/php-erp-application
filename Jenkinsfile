@@ -1,5 +1,4 @@
 pipeline {
-
     agent any
 
     environment {
@@ -24,7 +23,7 @@ pipeline {
             }
         }
 
-        stage('Workspace Information') {
+        stage('Verify Workspace') {
             steps {
                 sh '''
                 echo "========== WORKSPACE =========="
@@ -34,15 +33,22 @@ pipeline {
                 ls -lah
 
                 echo ""
-                echo "Checking required files..."
-
+                echo "========== REQUIRED FILES =========="
                 test -f Dockerfile
                 test -f docker-compose.yml
                 test -f nginx.conf
                 test -f testdb.sql
 
                 echo ""
-                echo "All required files exist."
+                echo "========== DOCKER COMPOSE VALIDATION =========="
+                docker compose config
+
+                echo ""
+                echo "========== NGINX CONFIG =========="
+                head -20 nginx.conf
+
+                echo ""
+                echo "Workspace verification completed."
                 '''
             }
         }
@@ -50,14 +56,13 @@ pipeline {
         stage('Docker & Trivy Version') {
             steps {
                 sh '''
-                echo "========== DOCKER =========="
+                echo "========== DOCKER VERSION =========="
                 docker --version
 
                 echo ""
-                docker compose version || true
+                docker compose version
 
                 echo ""
-                echo "========== TRIVY =========="
                 trivy --version
                 '''
             }
@@ -69,9 +74,8 @@ pipeline {
                 echo "========== BUILDING IMAGE =========="
 
                 docker build \
-                  -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    -t ${IMAGE_NAME}:${IMAGE_TAG} .
 
-                echo ""
                 docker images | grep ${IMAGE_NAME}
                 '''
             }
@@ -80,46 +84,28 @@ pipeline {
         stage('Trivy Security Scan') {
             steps {
                 sh '''
-                echo "========== TRIVY IMAGE SCAN =========="
+                echo "========== TRIVY SCAN =========="
 
                 trivy image \
                     --severity HIGH,CRITICAL \
-                    --format table \
                     --exit-code 0 \
                     ${IMAGE_NAME}:${IMAGE_TAG}
                 '''
             }
         }
 
-        stage('Cleanup Previous Deployment') {
+        stage('Remove Old Deployment') {
             steps {
                 sh '''
-                echo "========== CLEANUP =========="
+                echo "========== REMOVE OLD CONTAINERS =========="
 
                 docker compose down --remove-orphans || true
 
                 docker rm -f php-app nginx-web mysqlserver 2>/dev/null || true
 
+                docker network prune -f || true
+
                 docker image prune -f || true
-                '''
-            }
-        }
-
-        stage('Debug Workspace') {
-            steps {
-                sh '''
-                echo "========== DEBUG =========="
-
-                pwd
-
-                echo ""
-                ls -lah
-
-                echo ""
-                ls -l nginx.conf || true
-
-                echo ""
-                ls -l docker-compose.yml || true
                 '''
             }
         }
@@ -128,6 +114,12 @@ pipeline {
             steps {
                 sh '''
                 echo "========== DEPLOY =========="
+
+                pwd
+
+                ls -lah
+
+                docker compose config
 
                 docker compose up -d --build
                 '''
@@ -139,7 +131,7 @@ pipeline {
                 sh '''
                 echo "========== RUNNING CONTAINERS =========="
 
-                docker ps
+                docker ps -a
 
                 echo ""
                 docker compose ps
@@ -150,54 +142,44 @@ pipeline {
         stage('Health Check') {
             steps {
                 sh '''
-                echo "Waiting for services..."
+                echo "Waiting 20 seconds..."
+
                 sleep 20
 
                 echo ""
-                echo "========== APPLICATION =========="
+                echo "========== HTTP RESPONSE =========="
+
                 curl -I http://localhost:9090 || true
-
-                echo ""
-                echo "========== PHP LOG =========="
-                docker logs php-app --tail=20 || true
-
-                echo ""
-                echo "========== NGINX LOG =========="
-                docker logs nginx-web --tail=20 || true
-
-                echo ""
-                echo "========== MYSQL LOG =========="
-                docker logs mysqlserver --tail=20 || true
                 '''
             }
         }
-
     }
 
     post {
 
         success {
 
-            echo "=========================================="
+            echo "======================================="
             echo "CI/CD PIPELINE COMPLETED SUCCESSFULLY"
-            echo "=========================================="
             echo "Git Checkout      : SUCCESS"
             echo "Docker Build      : SUCCESS"
             echo "Trivy Scan        : SUCCESS"
             echo "Docker Deployment : SUCCESS"
-            echo "Application URL   : http://SERVER-IP:9090"
-            echo "=========================================="
-
-            cleanWs()
+            echo "======================================="
         }
 
         failure {
 
-            echo "=========================================="
+            echo "======================================="
             echo "CI/CD PIPELINE FAILED"
-            echo "=========================================="
+            echo "======================================="
 
             sh '''
+            echo ""
+            echo "========== WORKSPACE =========="
+            pwd
+            ls -lah
+
             echo ""
             echo "========== DOCKER CONTAINERS =========="
             docker ps -a || true
@@ -207,27 +189,24 @@ pipeline {
             docker images || true
 
             echo ""
-            echo "========== DOCKER COMPOSE LOGS =========="
-            docker compose logs --tail=100 || true
-
-            echo ""
             echo "========== PHP LOG =========="
-            docker logs php-app --tail=50 || true
+            docker logs php-app --tail=50 2>/dev/null || true
 
             echo ""
             echo "========== NGINX LOG =========="
-            docker logs nginx-web --tail=50 || true
+            docker logs nginx-web --tail=50 2>/dev/null || true
 
             echo ""
             echo "========== MYSQL LOG =========="
-            docker logs mysqlserver --tail=50 || true
+            docker logs mysqlserver --tail=50 2>/dev/null || true
             '''
-
-            cleanWs()
         }
 
         always {
-            echo "Pipeline Finished."
+            echo "Pipeline Finished"
+            // Keep the workspace for debugging.
+            // Uncomment the next line after the pipeline is stable.
+            // cleanWs()
         }
     }
 }

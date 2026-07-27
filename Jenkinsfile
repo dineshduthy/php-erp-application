@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         IMAGE_NAME = "php-erp-application"
-        IMAGE_TAG = "latest"
+        IMAGE_TAG  = "latest"
     }
 
     options {
@@ -28,22 +28,28 @@ pipeline {
                 sh '''
                 echo "========== Workspace =========="
                 pwd
-                echo ""
                 ls -lah
+
+                echo ""
+                echo "Checking required files..."
+
+                test -f Dockerfile
+                test -f docker-compose.yml
+                test -f nginx.conf
                 '''
             }
         }
 
-        stage('Check Docker & Trivy') {
+        stage('Docker & Trivy Version') {
             steps {
                 sh '''
-                echo "========== Docker Version =========="
+                echo "========== Docker =========="
                 docker --version
 
-                echo "========== Docker Compose =========="
-                docker compose version || true
+                echo ""
+                docker compose version
 
-                echo "========== Trivy Version =========="
+                echo ""
                 trivy --version
                 '''
             }
@@ -53,39 +59,39 @@ pipeline {
             steps {
                 sh '''
                 echo "========== Building Docker Image =========="
-                docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+
+                docker build \
+                -t ${IMAGE_NAME}:${IMAGE_TAG} .
+
+                docker images | grep ${IMAGE_NAME}
                 '''
             }
         }
 
-        stage('List Docker Images') {
-            steps {
-                sh '''
-                echo "========== Available Images =========="
-                docker images
-                '''
-            }
-        }
-
-        stage('Trivy Security Scan') {
+        stage('Trivy Image Scan') {
             steps {
                 sh '''
                 echo "========== Trivy Scan =========="
 
                 trivy image \
-                --severity HIGH,CRITICAL \
-                --format table \
-                --exit-code 0 \
-                ${IMAGE_NAME}:${IMAGE_TAG}
+                  --severity HIGH,CRITICAL \
+                  --format table \
+                  --exit-code 0 \
+                  ${IMAGE_NAME}:${IMAGE_TAG}
                 '''
             }
         }
 
-        stage('Stop Existing Containers') {
+        stage('Clean Previous Deployment') {
             steps {
                 sh '''
-                echo "========== Stopping Existing Containers =========="
-                docker compose down || true
+                echo "========== Removing Old Containers =========="
+
+                docker compose down --remove-orphans || true
+
+                docker rm -f php-app nginx-web mysqlserver 2>/dev/null || true
+
+                docker image prune -f || true
                 '''
             }
         }
@@ -93,32 +99,46 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 sh '''
-                echo "========== Deploying Containers =========="
+                echo "========== Deploying =========="
+
                 docker compose up -d --build
                 '''
             }
         }
 
-        stage('Verify Deployment') {
+        stage('Verify Containers') {
             steps {
                 sh '''
                 echo "========== Running Containers =========="
+
                 docker ps
 
                 echo ""
-                echo "========== Compose Status =========="
                 docker compose ps
                 '''
             }
         }
 
-        stage('Application Health Check') {
+        stage('Health Check') {
             steps {
                 sh '''
-                echo "Waiting for application..."
-                sleep 15
+                echo "Waiting for services..."
+                sleep 20
 
-                echo "========== Health Check =========="
+                echo ""
+                echo "========== PHP =========="
+                docker logs php-app --tail 20 || true
+
+                echo ""
+                echo "========== Nginx =========="
+                docker logs nginx-web --tail 20 || true
+
+                echo ""
+                echo "========== MySQL =========="
+                docker logs mysqlserver --tail 20 || true
+
+                echo ""
+                echo "========== Application =========="
                 curl -I http://localhost:9090 || true
                 '''
             }
@@ -128,19 +148,31 @@ pipeline {
     post {
 
         success {
-            echo "=========================================="
+            echo "=============================================="
             echo "CI/CD PIPELINE COMPLETED SUCCESSFULLY"
-            echo "Docker Image Built Successfully"
-            echo "Trivy Scan Completed"
-            echo "Application Deployed Successfully"
-            echo "=========================================="
+            echo "Git Checkout      : SUCCESS"
+            echo "Docker Build      : SUCCESS"
+            echo "Trivy Scan        : SUCCESS"
+            echo "Docker Deployment : SUCCESS"
+            echo "Application URL   : http://SERVER-IP:9090"
+            echo "=============================================="
         }
 
         failure {
-            echo "=========================================="
+            echo "=============================================="
             echo "CI/CD PIPELINE FAILED"
-            echo "Check Jenkins Console Output"
-            echo "=========================================="
+            echo "Please check the Jenkins console output."
+            echo "=============================================="
+
+            sh '''
+            echo ""
+            echo "========== Docker Containers =========="
+            docker ps -a || true
+
+            echo ""
+            echo "========== Compose Logs =========="
+            docker compose logs --tail=100 || true
+            '''
         }
 
         always {
